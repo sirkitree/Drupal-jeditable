@@ -1,0 +1,7 @@
+; $Id$
+name = jEditable
+description = Provides methods and CCK Formatters for using the jEditable edit-in-place plugin
+dependencies[] = content
+package = User Interface
+core = 6.x
+

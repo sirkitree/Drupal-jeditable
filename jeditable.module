@@ -1,0 +1,222 @@
+<?php
+// $Id$
+/**
+ * @file jeditable.module
+ * TODO: Enter file description here.
+ */
+
+/**
+ * Implementation of hook_menu()
+ */
+function jeditable_menu() {
+  $items['jeditable/ajax/save'] = array(
+    'title' => 'Save field',
+    'page callback' => '_jeditable_ajax_save',
+    'access arguments' => array('use jeditable'),
+  );
+  $items['jeditable/ajax/load'] = array(
+    'title' => 'Load field',
+    'page callback' => '_jeditable_ajax_load',
+    'page arguments' => array(3, 4, 5),
+    'access arguments' => array('use jeditable'),
+  );
+  return $items;
+}
+
+
+/**
+ * Implementation of hook_perm()
+ */
+function jeditable_perm() {
+  return array('use jeditable');
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function jeditable_init() {
+  if(user_access('use jeditable')) {
+    drupal_add_js(drupal_get_path('module', 'jeditable') .'/jquery.jeditable.mini.js', 'module');
+    drupal_add_js(drupal_get_path('module', 'jeditable') .'/drupal_jeditable.js', 'module');
+    drupal_add_css(drupal_get_path('module', 'jeditable') .'/jeditable.css', 'theme');
+  }
+}
+
+/**
+ * Implementation of hook_field_formatter_info(),.
+ */
+function jeditable_field_formatter_info() {
+  return array(
+    'jeditable_textfield' => array(
+      'label' => t('jEditable Textfield'),
+      'field types' => array('text', 'number_integer', 'number_decimal', 'number_float'),
+      'multiple values' => CONTENT_HANDLE_MODULE,
+    ),
+    'jeditable_textarea' => array(
+      'label' => t('jEditable Textarea'),
+      'field types' => array('text'),
+      'multiple values' => CONTENT_HANDLE_MODULE,
+    ),
+    'jeditable_nodereference' => array(
+      'label' => t('jEditable Nodereference'),
+      'field types' => array('nodereference'),
+      'multiple values' => CONTENT_HANDLE_MODULE,
+    ),
+    'jeditable_datetime' => array(
+      'label' => t('jEditable Datetime picker'),
+      'field types' => array('datetime'),
+      'multiple values' => CONTENT_HANDLE_MODULE,
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function jeditable_theme() {
+  return array(
+    'jeditable_formatter_jeditable_textfield' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'jeditable_formatter_jeditable_textarea' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'jeditable_formatter_jeditable_datetime' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'jeditable_formatter_jeditable_nodereference' => array(
+      'arguments' => array('element' => NULL),
+    ),
+  );
+}
+
+/**
+ * Theme a CCK text field as a jeditable textfield.
+ *
+ * @ingroup themeable
+ */
+function theme_jeditable_formatter_jeditable_textfield($element) {
+  $id = $element['#node']->nid;
+  $field = $element['#field_name'];
+  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-textfield">'. $element[0]['#item']['value'] .'</span>';
+}
+
+/**
+ * Theme a CCK text field as a jeditable textarea.
+ *
+ * @ingroup themeable
+ */
+function theme_jeditable_formatter_jeditable_textarea($element) {
+  $id = $element['#node']->nid;
+  $field = $element['#field_name'];
+  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-textarea">'. $element[0]['#item']['value'] .'</span>';
+}
+
+/**
+ * Theme a CCK text field as a jeditable textarea.
+ *
+ * @ingroup themeable
+ */
+function theme_jeditable_formatter_jeditable_nodereference($element) {
+  $id = $element['#node']->nid;
+  $field = $element['#field_name'];
+  $node = node_load($element[0]['#item']['nid']);
+  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-select">'. $node->title .'</span>';
+}
+
+/**
+ * Theme a CCK text field as a jeditable textfield.
+ *
+ * @ingroup themeable
+ */
+function theme_jeditable_formatter_jeditable_datetime($element) {
+  $id = $element['#node']->nid;
+  $field = $element['#field_name'];
+  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-textfield edit-datetime">'. $element[0]['#item']['value'] .'</span>';
+}
+
+/**
+ * Helper function to save a value using the jeditable callback
+ */
+function _jeditable_ajax_save() {
+  // Retrieve the values needed from the post to this page
+  $array = explode('-', $_POST['id']);
+  list($type, $id, $field_name) = $array;
+  $value = check_plain($_POST['value']);
+  
+  switch($type) {
+    case 'node':
+      $node = node_load($id);
+      $node->{$field_name} = $value;
+      node_save($node);
+      break;
+    case 'cck':
+      $node = node_load($id);
+      $field = content_fields($field_name, $node->type);
+      
+      // assign nid if nodereference, format date if date, otherwise just assign value
+      if($field['type'] == 'nodereference') {
+        $node->{$field_name}[0]['nid'] = $value;
+        $referenced = node_load($value);
+        $value = $referenced->title;
+      } else if($field['type'] == 'datetime') {
+        $unixtime = strtotime($value);
+        $value = date('o-m-d H:i:s', $unixtime);
+        $node->{$field_name}[0]['value'] = $value;
+      } else {
+        $node->{$field_name}[0]['value'] = $value;
+      }
+      node_save($node);
+      break;
+    case 'user':
+      /** should be implemented if user reference field is implemented **/
+      $user = user_load(array('uid' => $id));
+      $user->{$field_name} = $value;
+      user_save($user);
+      break;
+  }
+  print $value;
+  exit();
+}
+
+/**
+ * Helper function to load a list of select values
+ */
+function _jeditable_ajax_load() {
+  // Retrieve the values needed from the post to this page
+  $array = explode('-', $_GET['id']);
+  list($type, $id, $field_name) = $array;
+  
+  switch($type) {
+    case 'node':
+      /** Not Implemented yet. This is a test case scenario for editing things such as a Node title **/
+      $node = node_load($id);
+      $value = $node->{$field};
+      
+      $value = 'Y';
+      $defaults = array(
+        'E' => 'Letter E',
+        'M' => 'Letter M',
+        'Y' => 'Letter Y',
+      );
+      $defaults['selected'] = $value;
+      break;
+    case 'cck':
+      /** Right now this supports nodereference only. The same handler could support user_reference fields by checking field type **/
+      $node = node_load($id);
+      $current_value = $node->{$field_name}[0]['nid'];
+      
+      $field = content_fields($field_name, $node->type);
+      $values = _nodereference_potential_references($field);
+      
+      $defaults = array();
+      
+      foreach($values as $key => $value) {
+        $defaults[$key] = $value['rendered'];
+      }
+      $defaults['selected'] = $current_value;
+      break;
+  }
+  print json_encode($defaults);
+  exit();
+}
