@@ -87,6 +87,9 @@ function jeditable_theme() {
     'jeditable_formatter_jeditable_nodereference' => array(
       'arguments' => array('element' => NULL),
     ),
+    'jeditable_workflow' => array(
+      'arguments' => array('node' => NULL),
+    ),
   );
 }
 
@@ -136,6 +139,24 @@ function theme_jeditable_formatter_jeditable_datetime($element) {
 }
 
 /**
+ * Theme a workflow state name as a jeditable select list.
+ *
+ * @param object $node
+ *   The node object to be displayed
+ * 
+ * @ingroup themeable
+ */
+function theme_jeditable_workflow($node) {
+  $id = $node->nid;
+
+  // in this case we can use field to store the current workflow id
+  $field = $node->_workflow ? $node->_workflow : $node->workflow; // named differently depending on how far the node has loaded
+  
+  $state = workflow_get_state_name($field);
+  return '<span id="workflow-'. $id .'-'. $field .'" class="jeditable-select">'. $state .'</span>';
+}
+
+/**
  * Helper function to save a value using the jeditable callback
  */
 function _jeditable_ajax_save() {
@@ -147,32 +168,44 @@ function _jeditable_ajax_save() {
   switch($type) {
     case 'node':
       $node = node_load($id);
-      $node->{$field_name} = $value;
-      node_save($node);
+      if(!node_access('update', $node)) { // check to see that current user has update permissions on the node
+        $value = 'access denied'; // this is the value that will be returned, but no updates made
+      } else {
+        $node->{$field_name} = $value;
+        node_save($node);
+      }
       break;
     case 'cck':
       $node = node_load($id);
-      $field = content_fields($field_name, $node->type);
-      
-      // assign nid if nodereference, format date if date, otherwise just assign value
-      if($field['type'] == 'nodereference') {
-        $node->{$field_name}[0]['nid'] = $value;
-        $referenced = node_load($value);
-        $value = $referenced->title;
-      } else if($field['type'] == 'datetime') {
-        $unixtime = strtotime($value);
-        $value = date('o-m-d H:i:s', $unixtime);
-        $node->{$field_name}[0]['value'] = $value;
+      if(!node_access('update', $node)) { // check to see that current user has update permissions on the node
+        $value = 'access denied'; // this is the value that will be returned, but no updates made
       } else {
-        $node->{$field_name}[0]['value'] = $value;
+        $field = content_fields($field_name, $node->type);
+        
+        // assign nid if nodereference, format date if date, otherwise just assign value
+        if($field['type'] == 'nodereference') {
+          $node->{$field_name}[0]['nid'] = $value;
+          $referenced = node_load($value);
+          $value = $referenced->title;
+        } else if($field['type'] == 'datetime') {
+          $unixtime = strtotime($value);
+          $value = date('o-m-d H:i:s', $unixtime);
+          $node->{$field_name}[0]['value'] = $value;
+        } else {
+          $node->{$field_name}[0]['value'] = $value;
+        }
+        node_save($node);
       }
-      node_save($node);
       break;
     case 'user':
       /** should be implemented if user reference field is implemented **/
       $user = user_load(array('uid' => $id));
       $user->{$field_name} = $value;
       user_save($user);
+      break;
+    case 'workflow':
+      $node = node_load($id);
+      $value = _jeditable_workflow_save($node, $value);
       break;
   }
   print $value;
@@ -202,7 +235,9 @@ function _jeditable_ajax_load() {
       $defaults['selected'] = $value;
       break;
     case 'cck':
-      /** Right now this supports nodereference only. The same handler could support user_reference fields by checking field type **/
+      /** Right now this supports nodereference only. The same handler should support optionwidget cck types
+       *   in a dropdown, but that needs to be sorted out still.
+       **/
       $node = node_load($id);
       $current_value = $node->{$field_name}[0]['nid'];
       
@@ -216,7 +251,66 @@ function _jeditable_ajax_load() {
       }
       $defaults['selected'] = $current_value;
       break;
+    case 'workflow':
+      /** Load the workflow states available to the current user **/
+      $node = node_load($id);
+      $defaults = _jeditable_workflow_load($node, $field_name);
   }
   print json_encode($defaults);
   exit();
+}
+
+/**
+ * Workflow module integration
+ *
+ * Workflow API functions needed:
+ * workflow_execute_transition($node, $sid, $comment = NULL, $force = FALSE); // transition a node
+ * workflow_get_state_name($sid); // get a state name from a state id
+ * workflow_field_choices($node); // get the workflow selections available to the current user
+ * workflow_node_current_state($node); // get the current state of a node
+ */
+
+/**
+ * Load the defaults array for a workflow select
+ *
+ * @param object $node
+ *   Node object to get workflow states for.
+ * @param int $sid
+ *   The state id of the current state.
+ * @return array
+ *   An array of sid => name, including selected for current selection.
+ */
+function _jeditable_workflow_load($node, $sid) {
+  $defaults = workflow_field_choices($node);
+  
+  // set selected value
+  $defaults['selected'] = $sid;
+  
+  return $defaults;
+}
+
+/**
+ * Set the workflow state of the node
+ *
+ * @param object $node
+ *   Node to be changed.
+ * @return string
+ *   the status name after state change.
+ */
+function _jeditable_workflow_save($node, $sid) {
+  if($sid == $node->_workflow) {
+    // this means there's nothing to change, so we just return the title
+    return workflow_get_state_name($sid);
+  } else {
+    // here's where we do the actual transition. It will fail if user does not have appropriate permissions.
+    $new_sid = workflow_execute_transition($node, $sid, 'set using jeditable at '. request_uri());
+  }
+  
+  if(empty($new_sid)) {
+    // in this case, the transition failed, so we'll return "access denied"
+    return "access denied";
+  }
+  
+  // finally, this is the intended outcome and we can return the changed state's name
+  return workflow_get_state_name($new_sid);
 }

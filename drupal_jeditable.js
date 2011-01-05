@@ -18,5 +18,5 @@ Drupal.behaviors.jeditable = function(context) {
      type     : 'select',
      submit   : 'OK',
      style    : 'display: inline'
- });
+  });
 }
