@@ -384,8 +384,10 @@ function _jeditable_ajax_save() {
       if(!user_edit_access($user)) { // check to see that current user has update permissions on the user
         $value = 'access denied'; // this is the value that will be returned, but no updates made
       } else {
-        $user->{$field_name}[$user->language][0]['value'] = $value;
-        user_save($user);
+        $field_info=field_info_field($field_name);
+        $user->{$field_name}[$field_info['translatable']?$user->language:LANGUAGE_NONE][0]['value'] = $value;
+        $edit = array($field_name => array($field_info['translatable']?$user->language:LANGUAGE_NONE => array($delta => array('value' => $value))));
+        user_save($user, $edit);
       }
       break;
 
