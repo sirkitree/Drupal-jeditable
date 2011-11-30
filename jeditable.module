@@ -1,90 +1,169 @@
 <?php
 /**
  * @file jeditable.module
- * TODO: Enter file description here.
+ * TODO: Provides integration between Drupal and the jEditable jquery plugin
  */
 
 /**
- * Implementation of hook_menu()
+ * Implements hook_menu().
  */
 function jeditable_menu() {
   $items['jeditable/ajax/save'] = array(
     'title' => 'Save field',
     'page callback' => '_jeditable_ajax_save',
     'access arguments' => array('use jeditable'),
+    'type' => MENU_CALLBACK,
   );
   $items['jeditable/ajax/load'] = array(
     'title' => 'Load field',
     'page callback' => '_jeditable_ajax_load',
     'page arguments' => array(3, 4, 5),
     'access arguments' => array('use jeditable'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/config/content/jeditable'] = array(
+    'title' => 'jEditable',
+    'description' => 'Configure the jEditable module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('jeditable_admin_settings'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
   );
   return $items;
 }
 
-
-/**
- * Implementation of hook_perm()
- */
-function jeditable_perm() {
-  return array('use jeditable');
+function jeditable_admin_settings() {
+  $form['jeditable_create_new_revisions'] = array(
+    '#type' => 'checkbox', 
+    '#title' => t('Create Node Revisions'),
+    '#default_value' => variable_get('jeditable_create_new_revisions', 0),
+    '#description' => t('If enabled, each time a field is changed a new node revision will be generated. This will generate a very full revision table if jeditable is used extensively, so use with caution'),
+  );
+  $form['jeditable_empty_placeholder'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('Empty field placeholder'),
+    '#default_value' => variable_get('jeditable_empty_placeholder', '--'),
+    '#description' => t('Text, that will be shown if field is empty'),
+  );
+  
+  return system_settings_form($form);
 }
 
 /**
- * Implementation of hook_init().
+ * Implements hook_permission().
  */
-function jeditable_init() {
-  if(user_access('use jeditable')) {
-    drupal_add_js(drupal_get_path('module', 'jeditable') .'/jquery.jeditable.mini.js', 'module');
-    drupal_add_js(drupal_get_path('module', 'jeditable') .'/drupal_jeditable.js', 'module');
-    drupal_add_css(drupal_get_path('module', 'jeditable') .'/jeditable.css', 'theme');
-  }
-}
-
-/**
- * Implementation of hook_field_formatter_info(),.
- */
-function jeditable_field_formatter_info() {
+function jeditable_permission() {
   return array(
-    'jeditable_textfield' => array(
-      'label' => t('jEditable Textfield'),
-      'field types' => array('text', 'number_integer', 'number_decimal', 'number_float'),
-      'multiple values' => CONTENT_HANDLE_MODULE,
-    ),
-    'jeditable_textarea' => array(
-      'label' => t('jEditable Textarea'),
-      'field types' => array('text'),
-      'multiple values' => CONTENT_HANDLE_MODULE,
-    ),
-    'jeditable_nodereference' => array(
-      'label' => t('jEditable Nodereference'),
-      'field types' => array('nodereference'),
-      'multiple values' => CONTENT_HANDLE_MODULE,
-    ),
-    'jeditable_datetime' => array(
-      'label' => t('jEditable Datetime picker'),
-      'field types' => array('datetime'),
-      'multiple values' => CONTENT_HANDLE_MODULE,
+    'use jeditable' => array(
+      'title' => t('Use jEditable'),
+      'description' => t('Use jEditable to edit fields in place.'),
     ),
   );
 }
 
 /**
- * Implementation of hook_theme().
+ * Implements hook_field_formatter_info(),.
+ */
+function jeditable_field_formatter_info() {
+  $all_types = array_keys(field_info_field_types());
+//   print_r($all_types); die;
+  return array(
+    'jeditable_textfield' => array(
+      'label' => t('jEditable textfield'),
+      'field types' => array('text', 'text_long', 'text_with_summary', 'number_integer', 'number_decimal', 'number_float', 'list_boolean', 'list_integer', 'list_float', 'list_text'),
+      'settings' => array(
+        'fallback_format' => NULL,
+        'fallback_settings' => array(),
+        'empty_text' => '--',
+      ),
+    ),
+    'jeditable_checkbox' => array(
+      'label' => t('jEditable checkboxes/radios [not working]'),
+      'field types' => array('list_boolean', 'list_integer', 'list_float', 'list_text'),
+      'settings' => array(
+        'fallback_format' => NULL,
+        'fallback_settings' => array(),
+        'empty_text' => '--',
+      ),
+    ),
+    'jeditable_select' => array(
+      'label' => t('jEditable selectlist [not working]'),
+      'field types' => array('list_boolean', 'list_integer', 'list_float', 'list_text'),
+      'settings' => array(
+        'fallback_format' => NULL,
+        'fallback_settings' => array(),
+        'empty_text' => '--',
+      ),
+    ),
+    'jeditable_nodereference' => array(
+      'label' => t('jEditable Nodereference'),
+      'field types' => array('nodereference'),
+    ),
+    'jeditable_datetime' => array(
+      'label' => t('jEditable Datetime picker'),
+      'field types' => array('datetime'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function jeditable_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $path = drupal_get_path('module', 'jeditable');
+  $elements = array();
+  if(empty($items)) {
+    $items[0]['value']=variable_get('jeditable_empty_placeholder', '--');
+  }
+  list($tmp,$widget_type)=explode('_',$display['type']);
+  
+  foreach ($items as $delta => $item) {
+    $field_delta=isset($display['views_field'])?$display['views_field']->options['delta_offset']+$delta:$delta;
+    $elements[$delta] = array(
+      '#markup' => theme('jeditable_formatter_jeditable', array('element' => $item, 'field' => $instance, 'entity' => $entity, 'entity_type' => $entity_type, 'widget_type' => $widget_type, 'delta' => $field_delta )),
+    );
+
+    if (user_access('use jeditable')) {
+      $elements[$delta]['#attached'] = array(
+        'js' => array(
+          $path . '/jquery.jeditable.mini.js',
+          $path . '/drupal_jeditable.js',
+        ),
+        'css' => array(
+          $path . '/jeditable.css',
+        ),
+      );
+    }
+  }
+  return $elements;
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function jeditable_views_api() {
+  return array(
+    'api' => 2.0,
+    'path' => drupal_get_path('module', 'jeditable') . '/includes',
+  );
+}
+
+/**
+ * Implements hook_theme().
  */
 function jeditable_theme() {
   return array(
-    'jeditable_formatter_jeditable_textfield' => array(
-      'arguments' => array('element' => NULL),
+    'jeditable_formatter_jeditable' => array(
+      'arguments' => array('element' => NULL, 'field' => NULL, 'entity' => NULL, 'entity_type' => NULL, 'widget_type' => NULL, 'delta' => NULL),
     ),
-    'jeditable_formatter_jeditable_textarea' => array(
-      'arguments' => array('element' => NULL),
+    'jeditable_formatter_jeditable_select' => array(
+      'arguments' => array('element' => NULL, 'field' => NULL, 'entity' => NULL, 'entity_type' => NULL, 'delta' => NULL),
     ),
     'jeditable_formatter_jeditable_datetime' => array(
-      'arguments' => array('element' => NULL),
+      'arguments' => array('element' => NULL, 'field' => NULL, 'entity' => NULL, 'entity_type' => NULL, 'delta' => NULL),
     ),
     'jeditable_formatter_jeditable_nodereference' => array(
-      'arguments' => array('element' => NULL),
+      'arguments' => array('element' => NULL, 'field' => NULL, 'entity' => NULL, 'entity_type' => NULL, 'delta' => NULL),
     ),
     'jeditable_workflow' => array(
       'arguments' => array('node' => NULL),
@@ -93,25 +172,76 @@ function jeditable_theme() {
 }
 
 /**
- * Theme a CCK text field as a jeditable textfield.
+ * Returns the id fo
+
+/**
+ * Theme a text field as a jeditable textfield.
  *
  * @ingroup themeable
  */
-function theme_jeditable_formatter_jeditable_textfield($element) {
-  $id = $element['#node']->nid;
-  $field = $element['#field_name'];
-  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-textfield">'. $element[0]['#item']['value'] .'</span>';
+function theme_jeditable_formatter_jeditable($variables) {
+  $element     = $variables['element'];
+  $field       = $variables['field'];
+  $entity      = $variables['entity'];
+  $entity_type = $variables['entity_type'];
+  $widget_type = $variables['widget_type'];
+
+  switch ($entity_type) {
+    case 'node':
+      // Check user's access to editing this node.
+      if (!node_access('update', $entity)) {
+        return $element['value'];
+      }
+
+      $id = $entity->nid;
+      break;
+
+    case 'user':
+      // Check user's access to editing this user.
+      if (!user_edit_access($entity)) {
+        return $element['value'];
+      }
+      $id = $entity->uid;
+      break;
+  }
+  if(strpos($field['field_name'],'field_')===0) $entity_type='field';
+
+  return '<span id="' . $entity_type . '-' . $id . '-' . $field['field_name'] . '-' . $widget_type . '-' . $variables['delta'] . '" class="jeditable jeditable-textfield">' . $element['value'] . '</span>';
 }
 
 /**
- * Theme a CCK text field as a jeditable textarea.
+ * Theme a textarea field as a jeditable textarea.
  *
  * @ingroup themeable
  */
-function theme_jeditable_formatter_jeditable_textarea($element) {
-  $id = $element['#node']->nid;
-  $field = $element['#field_name'];
-  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-textarea">'. $element[0]['#item']['value'] .'</span>';
+function theme_jeditable_formatter_jeditable_textarea($variables) {
+  $element     = $variables['element'];
+  $field       = $variables['field'];
+  $entity      = $variables['entity'];
+  $entity_type = $variables['entity_type'];
+
+  switch ($entity_type) {
+    case 'node':
+      // Check user's access to editing this node.
+      if (!node_access('update', $entity)) {
+        return $element['value'];
+      }
+
+      $id = $entity->nid;
+      break;
+
+    case 'user':
+      // Check user's access to editing this user.
+      if (!user_edit_access($entity)) {
+        return $element['value'];
+      }
+      $id = $entity->uid;
+      break;
+  }
+  
+  if($entity_type == 'node') $entity_type='field';
+
+  return '<span id="' . $entity_type . '-' . $id . '-' . $field['field_name'] . '-' . $variables['delta'] . '" class="jeditable jeditable-textarea">' . $element['value'] . '</span>';
 }
 
 /**
@@ -123,7 +253,7 @@ function theme_jeditable_formatter_jeditable_nodereference($element) {
   $id = $element['#node']->nid;
   $field = $element['#field_name'];
   $node = node_load($element[0]['#item']['nid']);
-  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-select">'. $node->title .'</span>';
+  return '<span id="field-' . $id . '-' . $field . '" class="jeditable-select">' . $node->title . '</span>';
 }
 
 /**
@@ -134,7 +264,79 @@ function theme_jeditable_formatter_jeditable_nodereference($element) {
 function theme_jeditable_formatter_jeditable_datetime($element) {
   $id = $element['#node']->nid;
   $field = $element['#field_name'];
-  return '<span id="cck-'. $id .'-'. $field .'" class="jeditable-textfield edit-datetime">'. $element[0]['#item']['value'] .'</span>';
+  return '<span id="field-' . $id . '-' . $field . '" class="jeditable-textfield edit-datetime">' . $element[0]['#item']['value'] . '</span>';
+}
+
+/**
+ * Theme a boolean_list field as a jeditable checkbox.
+ *
+ * @ingroup themeable
+ */
+function theme_jeditable_formatter_jeditable_checkbox($variables) {
+  $element     = $variables['element'];
+  $field       = $variables['field'];
+  $entity      = $variables['entity'];
+  $entity_type = $variables['entity_type'];
+krumo($variables); 
+// echo drupal_render($field);
+die;
+  switch ($entity_type) {
+    case 'node':
+      // Check user's access to editing this node.
+      if (!node_access('update', $entity)) {
+        return $element['value'];
+      }
+
+      $id = $entity->nid;
+      break;
+
+    case 'user':
+      // Check user's access to editing this user.
+      if (!user_edit_access($entity)) {
+        return $element['value'];
+      }
+      $id = $entity->uid;
+      break;
+  }
+  if($entity_type == 'node') $entity_type='field';
+
+  return '<span id="' . $entity_type . '-' . $id . '-' . $field['field_name'] . '-checkbox-' . $variables['delta'] . '" class="jeditable jeditable-textfield">' . $element['value'] . '</span>';
+}
+
+/**
+ * Theme a list field as a jeditable select.
+ *
+ * @ingroup themeable
+ */
+function theme_jeditable_formatter_jeditable_select($variables) {
+  $element     = $variables['element'];
+  $field       = $variables['field'];
+  $entity      = $variables['entity'];
+  $entity_type = $variables['entity_type'];
+// krumo($variables); 
+// echo drupal_render($field);
+// die;
+  switch ($entity_type) {
+    case 'node':
+      // Check user's access to editing this node.
+      if (!node_access('update', $entity)) {
+        return $element['value'];
+      }
+
+      $id = $entity->nid;
+      break;
+
+    case 'user':
+      // Check user's access to editing this user.
+      if (!user_edit_access($entity)) {
+        return $element['value'];
+      }
+      $id = $entity->uid;
+      break;
+  }
+  if($entity_type == 'node') $entity_type='field_checkbox';
+
+  return '<span id="' . $entity_type . '-' . $id . '-' . $field['field_name'] . '- ' . $variables['delta'] . '" class="jeditable jeditable-textfield">' . $element['value'] . '</span>';
 }
 
 /**
@@ -152,7 +354,7 @@ function theme_jeditable_workflow($node) {
   $field = $node->_workflow ? $node->_workflow : $node->workflow; // named differently depending on how far the node has loaded
   
   $state = workflow_get_state_name($field);
-  return '<span id="workflow-'. $id .'-'. $field .'" class="jeditable-select">'. $state .'</span>';
+  return '<span id="workflow-' . $id . '-' . $field . '" class="jeditable-select">' . $state . '</span>';
 }
 
 /**
@@ -161,47 +363,57 @@ function theme_jeditable_workflow($node) {
 function _jeditable_ajax_save() {
   // Retrieve the values needed from the post to this page
   $array = explode('-', $_POST['id']);
-  list($type, $id, $field_name) = $array;
+  list($type, $id, $field_name, $field_type, $delta) = $array;
   $value = check_plain($_POST['value']);
-  
+//   drupal_set_message("type $type field $field_name value $value id $id delta $delta");
   switch($type) {
     case 'node':
       $node = node_load($id);
       if(!node_access('update', $node)) { // check to see that current user has update permissions on the node
         $value = 'access denied'; // this is the value that will be returned, but no updates made
       } else {
+//         drupal_set_message(var_export($node->{$field_name},true));
         $node->{$field_name} = $value;
+        $node->revision = variable_get('jeditable_create_new_revisions', false);
         node_save($node);
       }
       break;
-    case 'cck':
+
+    case 'user':
+      $user = user_load($id);
+      if(!user_edit_access($user)) { // check to see that current user has update permissions on the user
+        $value = 'access denied'; // this is the value that will be returned, but no updates made
+      } else {
+        $user->{$field_name}[$user->language][0]['value'] = $value;
+        user_save($user);
+      }
+      break;
+
+    case 'field':
       $node = node_load($id);
+      $delta=intval($delta);
       if(!node_access('update', $node)) { // check to see that current user has update permissions on the node
         $value = 'access denied'; // this is the value that will be returned, but no updates made
       } else {
-        $field = content_fields($field_name, $node->type);
-        
+        $field=field_info_field($field_name);
+        $lang=$field['translatable']?$node->language:LANGUAGE_NONE;
         // assign nid if nodereference, format date if date, otherwise just assign value
         if($field['type'] == 'nodereference') {
-          $node->{$field_name}[0]['nid'] = $value;
+          $node->{$field_name}[$lang][$delta]['nid'] = $value;
           $referenced = node_load($value);
           $value = $referenced->title;
-        } else if($field['type'] == 'datetime') {
+        } elseif($field['type'] == 'datetime') {
           $unixtime = strtotime($value);
           $value = date('o-m-d H:i:s', $unixtime);
-          $node->{$field_name}[0]['value'] = $value;
+          $node->{$field_name}[$lang][$delta]['value'] = $value;
         } else {
-          $node->{$field_name}[0]['value'] = $value;
+          $node->{$field_name}[$lang][$delta]['value'] = $value;
         }
+        $node->revision = variable_get('jeditable_create_new_revisions', false);
         node_save($node);
       }
       break;
-    case 'user':
-      /** should be implemented if user reference field is implemented **/
-      $user = user_load(array('uid' => $id));
-      $user->{$field_name} = $value;
-      user_save($user);
-      break;
+
     case 'workflow':
       $node = node_load($id);
       $value = _jeditable_workflow_save($node, $value);
@@ -302,7 +514,7 @@ function _jeditable_workflow_save($node, $sid) {
     return workflow_get_state_name($sid);
   } else {
     // here's where we do the actual transition. It will fail if user does not have appropriate permissions.
-    $new_sid = workflow_execute_transition($node, $sid, 'set using jeditable at '. request_uri());
+    $new_sid = workflow_execute_transition($node, $sid, 'set using jeditable at ' . $_SERVER['HTTP_REFERER']);
   }
   
   if(empty($new_sid)) {

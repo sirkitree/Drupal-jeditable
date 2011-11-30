@@ -1,6 +1,8 @@
 name = jEditable
-description = Provides methods and CCK Formatters for using the jEditable edit-in-place plugin
-dependencies[] = content
+description = Provides methods and field formatters for using the jEditable edit-in-place plugin
+dependencies[] = field
 package = User Interface
-core = 6.x
+core = 7.x
 
+; Files that contain classes.
+files[] = includes/views_handler_field_jeditable.inc
