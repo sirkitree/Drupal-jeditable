@@ -8,14 +8,14 @@
         submit    : 'Save',
         style     : 'display: inline; min-width: 100px;'
       });
-      $('.jeditable-textarea', context).editable('/jeditable/ajax/save', { 
+      $('.jeditable-textarea', context).editable('/jeditable/ajax/save', {
         type      : 'textarea',
-        cancel    : 'Cancel',
-        submit    : 'OK',
         indicator : 'Saving...',
-        tooltip   : 'Click to edit...'
+        tooltip   : 'Click to edit...',
+        cancel    : 'Cancel',
+        submit    : 'Save'
       });
-      $('.jeditable-select', context).editable('/jeditable/ajax/save', { 
+      $('.jeditable-select', context).editable('/jeditable/ajax/save', {
         loadurl  : '/jeditable/ajax/load',
         type     : 'select',
         submit   : 'OK',

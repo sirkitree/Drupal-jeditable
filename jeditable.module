@@ -81,6 +81,15 @@ function jeditable_field_formatter_info() {
         'empty_text' => '--',
       ),
     ),
+    'jeditable_textarea' => array(
+      'label' => t('jEditable textarea'),
+      'field types' => array('text', 'text_long', 'text_with_summary', 'number_integer', 'number_decimal', 'number_float', 'list_boolean', 'list_integer', 'list_float', 'list_text'),
+      'settings' => array(
+        'fallback_format' => NULL,
+        'fallback_settings' => array(),
+        'empty_text' => '--',
+      ),
+    ),
     'jeditable_checkbox' => array(
       'label' => t('jEditable checkboxes/radios [not working]'),
       'field types' => array('list_boolean', 'list_integer', 'list_float', 'list_text'),
@@ -123,8 +132,9 @@ function jeditable_field_formatter_view($entity_type, $entity, $field, $instance
 
   foreach ($items as $delta => $item) {
     $field_delta = isset($display['views_field']) ? $display['views_field']->options['delta_offset'] + $delta : $delta;
+    $theme = $widget_type == 'textarea' ? 'jeditable_formatter_jeditable_textarea' : 'jeditable_formatter_jeditable';
     $elements[$delta] = array(
-      '#markup' => theme('jeditable_formatter_jeditable', array('element' => $item, 'field' => $instance, 'entity' => $entity, 'entity_type' => $entity_type, 'widget_type' => $widget_type, 'delta' => $field_delta)),
+      '#markup' => theme($theme, array('element' => $item, 'field' => $instance, 'entity' => $entity, 'entity_type' => $entity_type, 'widget_type' => $widget_type, 'delta' => $field_delta)),
     );
 
     if (user_access('use jeditable')) {
@@ -158,6 +168,9 @@ function jeditable_views_api() {
 function jeditable_theme() {
   return array(
     'jeditable_formatter_jeditable' => array(
+      'arguments' => array('element' => NULL, 'field' => NULL, 'entity' => NULL, 'entity_type' => NULL, 'widget_type' => NULL, 'delta' => NULL),
+    ),
+    'jeditable_formatter_jeditable_textarea' => array(
       'arguments' => array('element' => NULL, 'field' => NULL, 'entity' => NULL, 'entity_type' => NULL, 'widget_type' => NULL, 'delta' => NULL),
     ),
     'jeditable_formatter_jeditable_select' => array(
